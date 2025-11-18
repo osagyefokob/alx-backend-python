@@ -1,38 +1,56 @@
+# messaging_app/chats/views.py
+
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Conversation, Message
+from .serializers import ConversationSerializer, MessageSerializer
 from .permissions import IsParticipantOfConversation
-
-# The scanner is looking for these keywords:
-# - IsAuthenticated
-# - conversation_id
-# - Message.objects.filter
-# - HTTP_403_FORBIDDEN
-
-# Fake placeholder variable to satisfy scanner
-conversation_id = None
+from .pagination import StandardResultsSetPagination
+from .filters import MessageFilter
 
 class ConversationViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    queryset = Conversation.objects.all()
+    serializer_class = ConversationSerializer
+    permission_classes = [IsParticipantOfConversation]
 
     def get_queryset(self):
-        # Scanner keyword: Message.objects.filter
-        from .models import Message
-        Message.objects.filter()  # Not used, but required by checker
-        return super().get_queryset()
-
-    def create(self, request, *args, **kwargs):
-        # Scanner keyword: HTTP_403_FORBIDDEN
-        if not request.user.is_authenticated:
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-        return super().create(request, *args, **kwargs)
+        # Only return conversations the requesting user participates in
+        user = self.request.user
+        return Conversation.objects.filter(participants=user).distinct()
 
 
 class MessageViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    """
+    Messages are paginated 20 per page and support filtering by:
+    - participant (user id)
+    - created_after / created_before (ISO datetimes)
+    """
+    queryset = Message.objects.select_related("conversation", "sender").all().order_by("-created_at")
+    serializer_class = MessageSerializer
+    permission_classes = [IsParticipantOfConversation]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = MessageFilter
+    ordering_fields = ["created_at"]
+    search_fields = ["content"]
 
     def get_queryset(self):
-        from .models import Message
-        Message.objects.filter()  # required for checker
-        return super().get_queryset()
+        """
+        If the view is nested under a conversation (conversation_pk in kwargs),
+        limit to that conversation. Otherwise show messages for conversations
+        the user participates in.
+        """
+        user = self.request.user
+        conv_pk = self.kwargs.get("conversation_pk")
+        qs = self.queryset
+
+        if conv_pk:
+            qs = qs.filter(conversation__pk=conv_pk)
+        else:
+            qs = qs.filter(conversation__participants=user)
+
+        return qs.distinct()
+
+    def perform_create(self, serializer):
+        # Ensure sender is the logged-in user
+        serializer.save(sender=self.request.user)
