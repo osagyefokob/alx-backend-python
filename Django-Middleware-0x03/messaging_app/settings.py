@@ -24,6 +24,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
 ]
 
+    "chats.middleware.RequestLoggingMiddleware",
+
+
 ROOT_URLCONF = "messaging_app.urls"
 
 # Minimal DB so Django won't error if someone runs migrations locally
