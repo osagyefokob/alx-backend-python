@@ -1,3 +1,10 @@
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
+
+
 INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
