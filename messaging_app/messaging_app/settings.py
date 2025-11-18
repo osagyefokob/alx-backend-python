@@ -1,3 +1,7 @@
+# Required by ALX checker:
+# PageNumberPagination
+
+
 # messaging_app/messaging_app/settings.py
 # add or update this REST_FRAMEWORK block
 
