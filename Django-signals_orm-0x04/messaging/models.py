@@ -1,9 +1,29 @@
-# ALX Task 3: Threaded conversations using parent_message and ORM optimization
+# ALX Task 4: Custom ORM Manager for unread messages with .only() optimization
 
 from django.db import models
 from django.contrib.auth.models import User
 
 
+# ------------------------------------------
+# CUSTOM MANAGER REQUIRED BY ALX
+# ------------------------------------------
+class UnreadMessagesManager(models.Manager):
+    def unread_for_user(self, user):
+        """
+        Returns unread messages for a specific user.
+        Optimized with .only() to load minimal fields.
+        """
+        return (
+            super()
+            .get_queryset()
+            .filter(receiver=user, read=False)
+            .only("id", "sender", "receiver", "content", "timestamp")
+        )
+
+
+# ------------------------------------------
+# MESSAGE MODEL (includes read + parent_message + edited)
+# ------------------------------------------
 class Message(models.Model):
     sender = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="sent_messages"
@@ -17,7 +37,7 @@ class Message(models.Model):
     # Task 1 field
     edited = models.BooleanField(default=False)
 
-    # Task 3: threaded replies
+    # Task 3: parent message for threaded replies
     parent_message = models.ForeignKey(
         "self",
         null=True,
@@ -26,29 +46,72 @@ class Message(models.Model):
         related_name="replies",
     )
 
+    # Task 4: unread indicator
     read = models.BooleanField(default=False)
+
+    # default + custom ORM managers
+    objects = models.Manager()              # Django default
+    unread = UnreadMessagesManager()        # ALX Task 4 manager
 
     def __str__(self):
         return f"Message {self.pk} from {self.sender} to {self.receiver}"
 
-    # ---------------------------------------------
-    # TASK 3:
-    # Optimized query for threaded conversations
-    # ---------------------------------------------
-    @staticmethod
-    def get_threaded_conversation(root_message_id):
-        """
-        Returns a root message with all nested replies using select_related and prefetch_related.
-        """
+    # ------------------------------------------
+    # Task 3: Recursive fetch of replies
+    # ------------------------------------------
+    def get_all_replies(self):
+        all_replies = []
 
-        # Load the root message with sender/receiver optimized
-        root = (
+        def collect(node):
+            children = node.replies.all()
+            for child in children:
+                all_replies.append(child)
+                collect(child)
+
+        collect(self)
+        return all_replies
+
+    @staticmethod
+    def get_threaded_conversation(root_id):
+        return (
             Message.objects
             .select_related("sender", "receiver", "parent_message")
             .prefetch_related("replies", "replies__replies")
-            .get(pk=root_message_id)
+            .get(pk=root_id)
         )
 
-        return root
 
-    # ---------------------------------------------
+# ------------------------------------------
+# MESSAGE HISTORY (Task 1 requirement)
+# ------------------------------------------
+class MessageHistory(models.Model):
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="history"
+    )
+    old_content = models.TextField()
+    edited_at = models.DateTimeField(auto_now_add=True)
+
+    # ALX requires this field
+    edited_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    def __str__(self):
+        return f"History of message {self.message_id} at {self.edited_at}"
+
+
+# ------------------------------------------
+# NOTIFICATIONS (Task 0)
+# ------------------------------------------
+class Notification(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="notifications"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    read = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Notification for {self.user} about message {self.message_id}"
