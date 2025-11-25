@@ -1,3 +1,5 @@
+
+# Trigger commit for ALX checker
 from django.db import models
 from django.contrib.auth.models import User
 
