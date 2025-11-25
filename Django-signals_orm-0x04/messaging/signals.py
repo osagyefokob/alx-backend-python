@@ -1,49 +1,43 @@
-from django.db.models.signals import post_save, pre_save, post_delete
+# ALX Task 1: pre_save signal to log message edits
+
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from .models import Message, MessageHistory, Notification
-from django.contrib.auth.models import User
-from django.core.exceptions import ObjectDoesNotExist
 
+
+# -------------------------------
+# Task 0 (still needed)
+# Notification when new message is created
+# -------------------------------
 @receiver(post_save, sender=Message)
 def create_notification_on_message(sender, instance, created, **kwargs):
-    """
-    When a new Message is created, create a Notification for the receiver.
-    """
     if created:
         Notification.objects.create(user=instance.receiver, message=instance)
 
+
+# -------------------------------
+# Task 1
+# Save old message content BEFORE update
+# -------------------------------
 @receiver(pre_save, sender=Message)
-def save_message_history_on_edit(sender, instance, **kwargs):
+def log_message_edit(sender, instance, **kwargs):
     """
-    Before a Message is saved, if it already exists and its content changed,
-    save the old content in MessageHistory and mark message as edited.
+    If message is being edited (not newly created),
+    save its old content to MessageHistory and mark edited=True
     """
+    # If message does not exist yet → no edit happening
     if not instance.pk:
-        # New message, nothing to compare
         return
 
     try:
         old = Message.objects.get(pk=instance.pk)
-    except ObjectDoesNotExist:
+    except Message.DoesNotExist:
         return
 
+    # If the content changed → log history
     if old.content != instance.content:
-        # save old content to history before the change
-        MessageHistory.objects.create(message=old, old_content=old.content)
-
-        # mark the instance as edited so that field reflects later
+        MessageHistory.objects.create(
+            message=old,
+            old_content=old.content
+        )
         instance.edited = True
-
-@receiver(post_delete, sender=User)
-def cleanup_user_related_data(sender, instance, **kwargs):
-    """
-    When a user is deleted, remove messages, notifications and histories
-    related to the user. Using cascade ensures DB integrity but we remove
-    explicitly to make intent clear.
-    """
-    # Delete messages where user is sender or receiver
-    Message.objects.filter(sender=instance).delete()
-    Message.objects.filter(receiver=instance).delete()
-
-    # Delete notifications for the user
-    Notification.objects.filter(user=instance).delete()
