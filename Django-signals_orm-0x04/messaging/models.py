@@ -1,4 +1,4 @@
-# ALX Task 1: Message edit logging with edited_by field
+# ALX Task 3: Threaded conversations using parent_message and ORM optimization
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -14,10 +14,10 @@ class Message(models.Model):
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    # Task 1 requirement
+    # Task 1 field
     edited = models.BooleanField(default=False)
 
-    # For threading (safe to keep)
+    # Task 3: threaded replies
     parent_message = models.ForeignKey(
         "self",
         null=True,
@@ -31,33 +31,24 @@ class Message(models.Model):
     def __str__(self):
         return f"Message {self.pk} from {self.sender} to {self.receiver}"
 
+    # ---------------------------------------------
+    # TASK 3:
+    # Optimized query for threaded conversations
+    # ---------------------------------------------
+    @staticmethod
+    def get_threaded_conversation(root_message_id):
+        """
+        Returns a root message with all nested replies using select_related and prefetch_related.
+        """
 
-# ALX Task 1 expects edited_by explicitly
-class MessageHistory(models.Model):
-    message = models.ForeignKey(
-        Message, on_delete=models.CASCADE, related_name="history"
-    )
-    old_content = models.TextField()
-    edited_at = models.DateTimeField(auto_now_add=True)
+        # Load the root message with sender/receiver optimized
+        root = (
+            Message.objects
+            .select_related("sender", "receiver", "parent_message")
+            .prefetch_related("replies", "replies__replies")
+            .get(pk=root_message_id)
+        )
 
-    # ✔ REQUIRED BY ALX CHECKER
-    edited_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True
-    )
+        return root
 
-    def __str__(self):
-        return f"History of message {self.message_id} at {self.edited_at}"
-
-
-class Notification(models.Model):
-    user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="notifications"
-    )
-    message = models.ForeignKey(
-        Message, on_delete=models.CASCADE, related_name="notifications"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    read = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"Notification for {self.user} about message {self.message_id}"
+    # ---------------------------------------------
