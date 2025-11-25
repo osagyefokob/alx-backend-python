@@ -1,15 +1,21 @@
-from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.cache import cache_page
-from .models import Message
+# ALX Task 2: Delete user account and trigger cleanup via post_delete signal
 
-@cache_page(60)  # 60 seconds cache timeout
+from django.contrib.auth.models import User
+from django.shortcuts import redirect
+from django.contrib.auth.decorators import login_required
+
+
 @login_required
-def conversation_list(request):
+def delete_user(request):
     """
-    View placeholder that would list messages for the logged in user.
-    Caching is applied per the milestone requirements.
+    Deletes the currently logged-in user's account.
+    This will trigger the post_delete signal to clean up:
+    - Messages sent/received by this user
+    - Notifications for this user
+    - MessageHistory records tied to messages of this user
     """
+
     user = request.user
-    messages = Message.unread_for_user(user) if hasattr(Message, "unread_for_user") else Message.objects.filter(receiver=user)
-    return render(request, "messaging/conversation_list.html", {"messages": messages})
+    user.delete()  # This will automatically trigger post_delete signal
+
+    return redirect("/")  # Send user to homepage after deletion
